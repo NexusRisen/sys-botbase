@@ -2,7 +2,7 @@ name: Sync Upstream Commits
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '0 0 * * *'  # Daily backup check
   workflow_dispatch:  # Allow manual trigger
 
 jobs:

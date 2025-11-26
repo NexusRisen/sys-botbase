@@ -58,3 +58,9 @@ jobs:
             --title "${{ steps.upstream.outputs.name }}" \
             --notes "${{ steps.upstream.outputs.body }}" \
             release_assets/*
+
+      - name: Trigger commit sync
+        if: steps.check.outputs.exists == 'false' && steps.upstream.outputs.tag != 'null'
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: gh workflow run sync-upstream.yml
