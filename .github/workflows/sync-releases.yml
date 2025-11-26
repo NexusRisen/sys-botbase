@@ -1,0 +1,65 @@
+name: Sync Upstream Releases
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Run every 5 minutes
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync-releases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/olliz0r/sys-botbase/releases/latest)
+          TAG=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+          NAME=$(echo "$RELEASE_DATA" | jq -r '.name')
+          BODY=$(echo "$RELEASE_DATA" | jq -r '.body')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists locally
+        id: check
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.upstream.outputs.tag }}")
+          if [ "$RESPONSE" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download upstream release assets
+        if: steps.check.outputs.exists == 'false' && steps.upstream.outputs.tag != 'null'
+        run: |
+          mkdir -p release_assets
+          ASSETS=$(curl -s https://api.github.com/repos/olliz0r/sys-botbase/releases/latest | jq -r '.assets[].browser_download_url')
+          for url in $ASSETS; do
+            wget -P release_assets "$url"
+          done
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false' && steps.upstream.outputs.tag != 'null'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.upstream.outputs.tag }}
+          name: ${{ steps.upstream.outputs.name }}
+          body: |
+            ${{ steps.upstream.outputs.body }}
+
+            ---
+            *Synced from [upstream release](https://github.com/olliz0r/sys-botbase/releases/tag/${{ steps.upstream.outputs.tag }})*
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
